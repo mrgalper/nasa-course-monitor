@@ -1,4 +1,5 @@
 import os, re, json, smtplib, hashlib, sys
+import certifi
 from pathlib import Path
 from email.message import EmailMessage
 import requests
@@ -15,7 +16,7 @@ OPEN = re.compile(r'registration (?:is )?open|applications (?:are )?open|apply n
 DATE = re.compile(r'(registration (?:start|end) date.{0,65}|\b\d{1,2}/\d{1,2}/20\d{2}\b)', re.I)
 
 def fetch(url):
-    r = requests.get(url, headers=HEADERS, timeout=25)
+    r = requests.get(url, headers=HEADERS, timeout=25, verify=certifi.where())
     r.raise_for_status()
     soup = BeautifulSoup(r.text, 'html.parser')
     for x in soup(['script', 'style', 'nav', 'footer', 'header']): x.decompose()
