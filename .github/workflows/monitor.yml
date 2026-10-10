@@ -35,3 +35,13 @@ jobs:
               git push
             fi
           fi
+      - name: Diagnose NASA SSL
+        run: |
+          echo "Testing NASA certificate"
+          echo | openssl s_client \
+            -connect stemgateway.nasa.gov:443 \
+            -servername stemgateway.nasa.gov \
+            -showcerts 2>&1 | grep -E "subject=|issuer=|verify error|Verify return code"
+
+          echo "Testing system certificates"
+          curl -IL --max-time 20 https://stemgateway.nasa.gov/
