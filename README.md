@@ -1,13 +1,13 @@
 # NASA Course Monitor v2
 
-Monitors the **specific NASA STEM Gateway offering pages** for Open Science Essentials and Open Science 101 every 30 minutes. When the registration status of either course changes (closed / possibly open / unknown), it emails `ALERT_EMAIL` and `YANA_EMAIL` in one message. Every Saturday (first run from 08:00 UTC) it emails `ALERT_EMAIL` a "still working" note with the current status of both courses; if that email doesn't arrive, the monitor isn't running. It does **not** automatically enroll you or guarantee availability. It does not discover new offering IDs.
+Monitors the **specific NASA STEM Gateway offering pages** for Open Science Essentials and Open Science 101 every 30 minutes (at :01 and :31). When the registration status of either course changes (closed / possibly open / unknown), it emails `ALERT_EMAIL` (Yana) in one message. Every Saturday (first run from 08:00 UTC) it emails `GMAIL_USER` and `ALERT_EMAIL` a "still working" note with the current status of both courses; if that email doesn't arrive, the monitor isn't running. It does **not** automatically enroll you or guarantee availability. It does not discover new offering IDs.
 
 ## Setup
 
 1. Create a **public** GitHub repository named `nasa-course-monitor`.
 2. Upload `monitor.py`, `requirements.txt`, and `.github/workflows/monitor.yml` (preserve folders). Do not upload your credentials.
 3. Enable Gmail two-step verification, then create an App Password at https://myaccount.google.com/apppasswords .
-4. In GitHub repository **Settings > Secrets and variables > Actions**, add repository secrets: `GMAIL_USER` (sending Gmail address), `GMAIL_APP_PASSWORD` (16-character App Password), `ALERT_EMAIL` (your address: status changes and the weekly email), `YANA_EMAIL` (also receives status-change emails; optional).
+4. In GitHub repository **Settings > Secrets and variables > Actions**, add repository secrets: `GMAIL_USER` (sending Gmail address; also gets the weekly email), `GMAIL_APP_PASSWORD` (16-character App Password), `ALERT_EMAIL` (Yana's address: status changes and the weekly email).
 5. In **Settings > Actions > General > Workflow permissions**, select **Read and write permissions** and save.
 6. In **Actions > NASA course monitor > Run workflow**, run manually. Check logs. An initialization email is sent if at least one page was parsed.
 7. Confirm later scheduled runs and email delivery. In Gmail, enable notifications for this sender.

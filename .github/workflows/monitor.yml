@@ -2,8 +2,9 @@ name: NASA course monitor
 on:
   workflow_dispatch:
   schedule:
-    # Every 30 minutes, off the busy top/bottom of the hour (GitHub may still delay or skip runs).
-    - cron: '17,47 * * * *'
+    # Every 30 minutes, just after the hour and half hour, when registration has opened before
+    # (GitHub may still delay or skip runs).
+    - cron: '1,31 * * * *'
 permissions:
   contents: write
 concurrency:
@@ -28,7 +29,6 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
-          YANA_EMAIL: ${{ secrets.YANA_EMAIL }}
         run: python monitor.py
       - name: Save monitoring state
         if: always()

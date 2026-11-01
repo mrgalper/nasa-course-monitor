@@ -58,9 +58,9 @@ def status_summary(state):
     return '\n'.join(f'- {name}: {STATUS_LABELS[state[name]["status"]]}' for name in COURSES if name in state)
 
 def main():
-    owner = os.environ['ALERT_EMAIL']
-    # Status changes also go to Yana; YANA_EMAIL is optional so a missing secret never breaks monitoring.
-    status_recipients = [owner] + ([os.environ['YANA_EMAIL']] if os.environ.get('YANA_EMAIL') else [])
+    yana = os.environ['ALERT_EMAIL']  # status changes go to Yana
+    # The weekly "still working" email goes to Yana and to the sending account (the repo owner).
+    heartbeat_recipients = list(dict.fromkeys([os.environ['GMAIL_USER'], yana]))
     previous = json.loads(STATE.read_text()) if STATE.exists() else {}
     updated = dict(previous)
     alerts = []
@@ -84,16 +84,16 @@ def main():
     if alerts:
         opened = any(updated[name]['status'] == 'potentially_open' for name in COURSES if name in updated)
         subject = 'NASA course registration may be OPEN' if opened else 'NASA course status changed'
-        send(subject, '\n\n---\n\n'.join(alerts) + '\n\nVerify registration on the NASA website; this is not a confirmed seat.', status_recipients)
+        send(subject, '\n\n---\n\n'.join(alerts) + '\n\nVerify registration on the NASA website; this is not a confirmed seat.', [yana])
     if not previous and updated:
-        send('NASA course monitor: initialized', 'Initial check complete. Monitoring:\n' + status_summary(updated) + ('\nErrors:\n'+'\n'.join(failures) if failures else ''), [owner])
+        send('NASA course monitor: initialized', 'Initial check complete. Monitoring:\n' + status_summary(updated) + ('\nErrors:\n'+'\n'.join(failures) if failures else ''), [yana])
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
     if now.weekday() == HEARTBEAT_WEEKDAY and now.hour >= HEARTBEAT_HOUR and previous.get('last_heartbeat') != today:
         body = (f'The NASA course monitor is still running (checked {now:%Y-%m-%d %H:%M} UTC).\n\nCurrent status:\n'
                 + status_summary(updated) + ('\n\nErrors this run:\n' + '\n'.join(failures) if failures else ''))
         try:
-            send('NASA course monitor: still working', body, [owner])
+            send('NASA course monitor: still working', body, heartbeat_recipients)
             updated['last_heartbeat'] = today
         except Exception as exc:
             failures.append(f'Weekly email: {exc}')
