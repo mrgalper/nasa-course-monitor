@@ -1,4 +1,5 @@
 import os, re, json, smtplib, hashlib, sys
+from datetime import datetime, timezone
 from pathlib import Path
 from email.message import EmailMessage
 from playwright.sync_api import sync_playwright, Error as PlaywrightError, TimeoutError as PlaywrightTimeout
@@ -8,6 +9,8 @@ COURSES = {
  'Open Science 101': 'https://stemgateway.nasa.gov/s/course-offering/a0BSJ0000049ih3/open-science-101',
 }
 STATE = Path('state.json')
+STATUS_LABELS = {'closed': 'Closed', 'potentially_open': 'POSSIBLY OPEN (Apply button visible)', 'unknown': 'Unknown'}
+HEARTBEAT_WEEKDAY, HEARTBEAT_HOUR = 5, 8  # weekly "still working" email: first run on Saturday from 08:00 UTC
 CLOSED = re.compile(r'reached capacity|registration is closed|registration closed|fully booked|no longer accepting applications', re.I)
 OPEN = re.compile(r'registration (?:is )?open|applications (?:are )?open|apply now|now accepting applications', re.I)
 DATE = re.compile(r'(registration (?:start|end) date.{0,65}|\b\d{1,2}/\d{1,2}/20\d{2}\b)', re.I)
@@ -45,13 +48,19 @@ def fetch(page, url):
     relevant = (match.group(1) if match else text[:4500]).strip()
     return {'status': status, 'apply': apply, 'digest': hashlib.sha256(relevant.encode()).hexdigest(), 'excerpt': relevant[:700], 'dates': DATE.findall(text)[:12]}
 
-def send(subject, body):
-    user = os.environ['GMAIL_USER']; password = os.environ['GMAIL_APP_PASSWORD']; to = os.environ['ALERT_EMAIL']
-    msg = EmailMessage(); msg['From'] = user; msg['To'] = to; msg['Subject'] = subject; msg.set_content(body)
+def send(subject, body, to):
+    user = os.environ['GMAIL_USER']; password = os.environ['GMAIL_APP_PASSWORD']
+    msg = EmailMessage(); msg['From'] = user; msg['To'] = ', '.join(to); msg['Subject'] = subject; msg.set_content(body)
     with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=25) as smtp:
         smtp.login(user, password); smtp.send_message(msg)
 
+def status_summary(state):
+    return '\n'.join(f'- {name}: {STATUS_LABELS[state[name]["status"]]}' for name in COURSES if name in state)
+
 def main():
+    owner = os.environ['ALERT_EMAIL']
+    # Status changes also go to Yana; YANA_EMAIL is optional so a missing secret never breaks monitoring.
+    status_recipients = [owner] + ([os.environ['YANA_EMAIL']] if os.environ.get('YANA_EMAIL') else [])
     previous = json.loads(STATE.read_text()) if STATE.exists() else {}
     updated = dict(previous)
     alerts = []
@@ -63,11 +72,9 @@ def main():
             try:
                 data = fetch(page, url)
                 old = previous.get(name)
-                if old:
-                    if data['status'] == 'potentially_open' and old['status'] != 'potentially_open':
-                        alerts.append(f'POSSIBLE REGISTRATION OPEN: {name}\n{url}\n{data["excerpt"]}')
-                    elif data['digest'] != old['digest'] or data['dates'] != old['dates'] or data['status'] != old['status']:
-                        alerts.append(f'NASA COURSE PAGE CHANGED: {name}\nStatus: {data["status"]}\n{url}\n{data["excerpt"]}')
+                # Only a status change (closed / possibly open / unknown) triggers an email; text edits do not.
+                if old and data['status'] != old['status']:
+                    alerts.append(f'{name}\nStatus: {STATUS_LABELS[old["status"]]} -> {STATUS_LABELS[data["status"]]}\n{url}\n\n{data["excerpt"]}')
                 updated[name] = data
                 print(f'{name}: {data["status"]}, apply={data["apply"]}')
             except Exception as exc:
@@ -75,9 +82,22 @@ def main():
                 print(f'ERROR {name}: {exc}', file=sys.stderr)
         browser.close()
     if alerts:
-        send('NASA course monitor: registration/page update', '\n\n---\n\n'.join(alerts) + '\n\nVerify registration on the NASA website; this is not a confirmed seat.')
+        opened = any(updated[name]['status'] == 'potentially_open' for name in COURSES if name in updated)
+        subject = 'NASA course registration may be OPEN' if opened else 'NASA course status changed'
+        send(subject, '\n\n---\n\n'.join(alerts) + '\n\nVerify registration on the NASA website; this is not a confirmed seat.', status_recipients)
     if not previous and updated:
-        send('NASA course monitor: initialized', 'Initial check complete. Monitoring:\n' + '\n'.join(f'{k}: {v["status"]}' for k,v in updated.items()) + ('\nErrors:\n'+'\n'.join(failures) if failures else ''))
+        send('NASA course monitor: initialized', 'Initial check complete. Monitoring:\n' + status_summary(updated) + ('\nErrors:\n'+'\n'.join(failures) if failures else ''), [owner])
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    if now.weekday() == HEARTBEAT_WEEKDAY and now.hour >= HEARTBEAT_HOUR and previous.get('last_heartbeat') != today:
+        body = (f'The NASA course monitor is still running (checked {now:%Y-%m-%d %H:%M} UTC).\n\nCurrent status:\n'
+                + status_summary(updated) + ('\n\nErrors this run:\n' + '\n'.join(failures) if failures else ''))
+        try:
+            send('NASA course monitor: still working', body, [owner])
+            updated['last_heartbeat'] = today
+        except Exception as exc:
+            failures.append(f'Weekly email: {exc}')
+            print(f'ERROR weekly email: {exc}', file=sys.stderr)
     if updated != previous:
         STATE.write_text(json.dumps(updated, indent=2) + '\n')
     if failures:
