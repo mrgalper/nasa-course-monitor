@@ -1,10 +1,10 @@
 name: NASA course monitor
 on:
+  # Scheduled checks are turned off; run manually from the Actions tab.
+  # To resume every 30 minutes, add back:
+  #   schedule:
+  #     - cron: '1,31 * * * *'
   workflow_dispatch:
-  schedule:
-    # Every 30 minutes, just after the hour and half hour, when registration has opened before
-    # (GitHub may still delay or skip runs).
-    - cron: '1,31 * * * *'
 permissions:
   contents: write
 concurrency:
